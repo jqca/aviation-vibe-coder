@@ -43,7 +43,6 @@ function App() {
           <Plane size={20} />
           <span style={{ fontWeight: 700, fontSize: 15 }}>航空・空港 Quantum Vibe Coder</span>
         </div>
-        <a href="https://company-dashboard.up.railway.app/expo" target="_blank" rel="noreferrer" className="portal-btn">
           <LayoutDashboard size={14} /> 40業界ポータルへ
         </a>
       </div>
