@@ -1,187 +1,349 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Play, RotateCcw } from 'lucide-react';
-import VizCanvas, { getVizType } from './VizCanvas';
+import React, { useState, useCallback, useEffect } from 'react';
 import type { UseCase } from '../data/useCases';
+import { TrendingUp, TrendingDown, Truck, Zap, ShieldCheck, Target, Play, RotateCcw } from 'lucide-react';
+import VizCanvas, { getVizType } from './VizCanvas';
 
-function parseToSeconds(v: string): number | null {
-  const s = v.replace(/,/g, '');
-  const m1 = s.match(/([\d.]+)\s*秒/); if (m1) return parseFloat(m1[1]);
-  const m2 = s.match(/([\d.]+)\s*分/); if (m2) return parseFloat(m2[1]) * 60;
-  const m3 = s.match(/([\d.]+)\s*時間/); if (m3) return parseFloat(m3[1]) * 3600;
-  const m4 = s.match(/([\d.]+)\s*日/); if (m4) return parseFloat(m4[1]) * 86400;
-  const m5 = s.match(/([\d.]+)\s*ms/i); if (m5) return parseFloat(m5[1]) / 1000;
-  const m6 = s.match(/([\d.]+)\s*s(?:ec)?/i); if (m6) return parseFloat(m6[1]);
-  const m7 = s.match(/([\d.]+)\s*min/i); if (m7) return parseFloat(m7[1]) * 60;
-  const m8 = s.match(/([\d.]+)\s*h(?:our|r)?/i); if (m8) return parseFloat(m8[1]) * 3600;
-  return null;
+const parseToSeconds = (timeStr: string): number | null => {
+  if (!timeStr) return null;
+  if (/即時|リアルタイム/.test(timeStr)) return 0.05;
+  if (/日次|翌朝/.test(timeStr)) return 86400;
+  const weekMatch = timeStr.match(/([\d.]+)\s*週間/);
+  if (weekMatch) return parseFloat(weekMatch[1]) * 7 * 86400;
+  const monthMatch = timeStr.match(/([\d.]+)\s*[ヶヵ]月/);
+  if (monthMatch) return parseFloat(monthMatch[1]) * 30 * 86400;
+  const numMatch = timeStr.match(/([\d.]+)/);
+  if (!numMatch) return null;
+  const num = parseFloat(numMatch[1]);
+  if (timeStr.includes('ms')) return num / 1000;
+  if (timeStr.includes('秒')) return num;
+  if (timeStr.includes('分')) return num * 60;
+  if (timeStr.includes('時間')) return num * 3600;
+  if (timeStr.includes('日')) return num * 86400;
+  return num;
+};
+
+const fmtTime = (sec: number): string => {
+  if (sec < 0.001) return `${(sec * 1_000_000).toFixed(0)}μs`;
+  if (sec < 1)     return `${(sec * 1000).toFixed(0)}ms`;
+  if (sec < 60)    return `${sec < 10 ? sec.toFixed(2) : sec.toFixed(1)}秒`;
+  if (sec < 3600)  return `${(sec / 60).toFixed(1)}分`;
+  if (sec < 86400) return `${(sec / 3600).toFixed(1)}時間`;
+  if (sec < 86400 * 30) return `${(sec / 86400).toFixed(1)}日`;
+  return `${(sec / (86400 * 30)).toFixed(1)}ヶ月`;
+};
+
+interface Props {
+  activeUseCase: UseCase;
 }
 
-function fmtTime(sec: number): string {
-  if (sec < 1) return `${(sec * 1000).toFixed(0)} ms`;
-  if (sec < 60) return `${sec.toFixed(1)} 秒`;
-  if (sec < 3600) return `${(sec / 60).toFixed(1)} 分`;
-  if (sec < 86400) return `${(sec / 3600).toFixed(1)} 時間`;
-  return `${(sec / 86400).toFixed(1)} 日`;
-}
-
-interface Props { activeUseCase: UseCase; }
-
-const LivePreview: React.FC<Props> = ({ activeUseCase: useCase }) => {
-  const [optimizationLevel, setOptimizationLevel] = useState(75);
-  const [dataSize, setDataSize] = useState(50);
+const LivePreview: React.FC<Props> = ({ activeUseCase }) => {
+  const [optimizationLevel, setOptimizationLevel] = useState(50);
+  const [dataSize, setDataSize] = useState(5000);
   const [isRunning, setIsRunning] = useState(false);
   const [isOptimized, setIsOptimized] = useState(false);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [useQuantum, setUseQuantum] = useState(true);
   const [progress, setProgress] = useState(0);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const vizType = getVizType(useCase.id);
-  const isActionMode = /gate|crew|rotation|baggage|security/.test(useCase.id);
+  const vizType = getVizType(activeUseCase.id);
+  const isActionMode = activeUseCase.id.includes('gate') || activeUseCase.id.includes('crew') || activeUseCase.id.includes('rotation') || activeUseCase.id.includes('baggage') || activeUseCase.id.includes('security');
 
   useEffect(() => {
-    setIsOptimized(false); setIsRunning(false); setProgress(0);
-    if (intervalRef.current) clearInterval(intervalRef.current);
-  }, [useCase.id]);
+    setIsOptimized(false);
+    setIsRunning(false);
+    setSelectedNode(null);
+    setProgress(0);
+    setOptimizationLevel(50);
+    setDataSize(5000);
+  }, [activeUseCase.id]);
 
-  const handleRunSimulation = () => {
-    if (isRunning) return;
-    setIsRunning(true); setIsOptimized(false); setProgress(0);
+  const statusClass = isActionMode || isOptimized ? 'action-mode' : '';
+
+  const getTrendIcon = (trend: string, active: boolean) => {
+    const color = active ? "#eab308" : "#2dd4bf";
+    if (trend === 'up') return <TrendingUp size={20} color={color} />;
+    if (trend === 'down') return <TrendingDown size={20} color={color} />;
+    return <Truck size={20} color={color} />;
+  };
+
+  const handleRunSimulation = useCallback(() => {
+    setIsRunning(true);
+    setIsOptimized(false);
+    setProgress(0);
+
     let p = 0;
-    intervalRef.current = setInterval(() => {
-      p += 0.025;
-      if (p >= 1) { p = 1; clearInterval(intervalRef.current!); setIsRunning(false); setIsOptimized(true); }
-      setProgress(p);
+    const interval = setInterval(() => {
+      p += Math.random() * 15 + 5;
+      if (p >= 100) {
+        p = 100;
+        clearInterval(interval);
+        setTimeout(() => {
+          setIsRunning(false);
+          setIsOptimized(true);
+          setProgress(0);
+        }, 300);
+      }
+      setProgress(Math.min(p, 100));
     }, 120);
-  };
+  }, []);
 
-  const handleReset = () => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    setIsRunning(false); setIsOptimized(false); setProgress(0); setSelectedNode(null);
-  };
+  const handleReset = useCallback(() => {
+    setIsOptimized(false);
+    setIsRunning(false);
+    setProgress(0);
+    setOptimizationLevel(50);
+    setDataSize(5000);
+    setSelectedNode(null);
+    setUseQuantum(true);
+  }, []);
 
-  const getAdjustedValue = (raw: string): string => {
-    const n = parseFloat(raw.replace(/[^0-9.\-]/g, ''));
-    if (isNaN(n)) return raw;
-    const factor = optimizationLevel / 75;
-    const adj = n * factor;
-    const unit = raw.replace(/[0-9.\-,]/g, '').trim();
-    return Number.isInteger(adj) ? `${Math.round(adj)}${unit}` : `${adj.toFixed(1)}${unit}`;
+  const getAdjustedValue = (value: string, trend: 'up' | 'down' | 'neutral') => {
+    if (!isOptimized) return value;
+    const match = value.match(/([\d.]+)/);
+    if (!match) return value;
+    const num = parseFloat(match[1]);
+    const qBoost = useQuantum ? 1.15 : 1.0;
+    const factor = (optimizationLevel / 100) * qBoost;
+    const adjusted = trend === 'down'
+      ? num * (1 - factor * 0.25)
+      : num * (1 + factor * 0.3);
+    const decimals = match[1].includes('.') ? match[1].split('.')[1].length : 0;
+    return value.replace(match[1], adjusted.toFixed(decimals));
   };
 
   const vizLabels: Record<string, { idle: string; running: string; done: string }> = {
-    flight: { idle: 'フライトスケジュール待機中', running: '量子最適化実行中…', done: 'スケジュール最適化完了' },
-    gate: { idle: 'ゲート割当待機中', running: 'ゲート配置最適化中…', done: '衝突ゼロ割当達成' },
-    maintenance: { idle: '整備計画待機中', running: '整備ウィンドウ最適化中…', done: 'AOGリスク最小化完了' },
-    crew: { idle: 'クルー割当待機中', running: 'ペアリング最適化中…', done: 'クルー最適配置完了' },
-    cargo: { idle: '貨物配置待機中', running: '重心バランス最適化中…', done: '積載率最大化完了' },
-    fuel: { idle: '燃費予測待機中', running: '燃料消費モデル実行中…', done: '燃費予測モデル完成' },
-    airspace: { idle: '空域管理待機中', running: 'セクター最適化中…', done: '空域衝突ゼロ達成' },
-    delay: { idle: '遅延分析待機中', running: '遅延伝播シミュレーション中…', done: '遅延波及抑制完了' },
-    baggage: { idle: '手荷物追跡待機中', running: 'BHSルーティング最適化中…', done: 'ロストバゲージ▼94%' },
-    congestion: { idle: '混雑分析待機中', running: 'ターミナル人流最適化中…', done: '混雑緩和達成' },
-    security: { idle: '保安検査待機中', running: 'レーン配分最適化中…', done: '待ち時間▼68%' },
-    rotation: { idle: '機材ローテーション待機中', running: '機材回し最適化中…', done: '稼働率最大化完了' },
-    commercial: { idle: '商業収益分析待機中', running: 'テナント配置最適化中…', done: '非航空収入▲22%' },
-    noise: { idle: '騒音評価待機中', running: '騒音コンター計算中…', done: '騒音面積▼35%' },
-    energy: { idle: 'エネルギー分析待機中', running: '空港電力最適化中…', done: 'エネルギー▼31%' },
-    weather: { idle: '気象回避待機中', running: '代替ルート計算中…', done: '最適迂回ルート確定' },
-    mro: { idle: 'MRO在庫待機中', running: '部品在庫最適化中…', done: '充足率98.7%' },
-    pricing: { idle: '運賃分析待機中', running: 'ダイナミックプライシング最適化中…', done: '収益▲18%' },
-    drone: { idle: 'ドローン空域待機中', running: 'UAM回廊デコンフリクト中…', done: '安全間隔確保完了' },
-    co2: { idle: 'CO₂分析待機中', running: 'カーボン削減シナリオ計算中…', done: 'CO₂▼28% YoY' },
+    flight:      { idle: 'フライトスケジュール待機中',     running: '量子最適化実行中',          done: '✓ スケジュール最適化完了' },
+    gate:        { idle: 'ゲート割当待機中',               running: 'ゲート配置最適化中',        done: '✓ 衝突ゼロ割当達成' },
+    maintenance: { idle: '整備計画待機中',                 running: '整備ウィンドウ最適化中',    done: '✓ AOGリスク最小化完了' },
+    crew:        { idle: 'クルー割当待機中',               running: 'ペアリング最適化中',        done: '✓ クルー最適配置完了' },
+    cargo:       { idle: '貨物配置待機中',                 running: '重心バランス最適化中',      done: '✓ 積載率最大化完了' },
+    fuel:        { idle: '燃費予測待機中',                 running: '燃料消費モデル実行中',      done: '✓ 燃費予測モデル完成' },
+    airspace:    { idle: '空域管理待機中',                 running: 'セクター最適化中',          done: '✓ 空域衝突ゼロ達成' },
+    delay:       { idle: '遅延分析待機中',                 running: '遅延伝播シミュレーション中', done: '✓ 遅延波及抑制完了' },
+    baggage:     { idle: '手荷物追跡待機中',               running: 'BHSルーティング最適化中',   done: '✓ ロストバゲージ▼94%' },
+    congestion:  { idle: '混雑分析待機中',                 running: 'ターミナル人流最適化中',    done: '✓ 混雑緩和達成' },
+    security:    { idle: '保安検査待機中',                 running: 'レーン配分最適化中',        done: '✓ 待ち時間▼68%' },
+    rotation:    { idle: '機材ローテーション待機中',       running: '機材回し最適化中',          done: '✓ 稼働率最大化完了' },
+    commercial:  { idle: '商業収益分析待機中',             running: 'テナント配置最適化中',      done: '✓ 非航空収入▲22%' },
+    noise:       { idle: '騒音評価待機中',                 running: '騒音コンター計算中',        done: '✓ 騒音面積▼35%' },
+    energy:      { idle: 'エネルギー分析待機中',           running: '空港電力最適化中',          done: '✓ エネルギー▼31%' },
+    weather:     { idle: '気象回避待機中',                 running: '代替ルート計算中',          done: '✓ 最適迂回ルート確定' },
+    mro:         { idle: 'MRO在庫待機中',                  running: '部品在庫最適化中',          done: '✓ 充足率98.7%' },
+    pricing:     { idle: '運賃分析待機中',                 running: 'ダイナミックプライシング最適化中', done: '✓ 収益▲18%' },
+    drone:       { idle: 'ドローン空域待機中',             running: 'UAM回廊デコンフリクト中',   done: '✓ 安全間隔確保完了' },
+    co2:         { idle: 'CO₂分析待機中',                  running: 'カーボン削減シナリオ計算中', done: '✓ CO₂▼28% YoY' },
   };
 
-  const label = vizLabels[vizType] || vizLabels.flight;
-  const statusText = isRunning ? label.running : isOptimized ? label.done : label.idle;
-
-  const qvc = useCase.quantumVsClassical;
+  const getVizLabel = () => {
+    const labels = vizLabels[vizType] || vizLabels.flight;
+    if (isRunning) return `${labels.running} ${Math.round(progress)}%`;
+    if (isOptimized) return `${labels.done} (${useQuantum ? '量子' : '古典'})`;
+    return labels.idle;
+  };
 
   return (
-    <div className="live-preview">
-      {/* ── Visualization ── */}
-      <div className={`visualization-box${isActionMode ? ' action-mode' : ''}${isRunning ? ' viz-running' : ''}`}>
-        <VizCanvas vizType={vizType} running={isRunning} optimized={isOptimized} progress={progress} optLevel={optimizationLevel} selectedNode={selectedNode} onNodeClick={setSelectedNode} />
-        <div className="viz-status">{statusText}</div>
+    <div className="preview-container">
+      {/* ビジュアライゼーション */}
+      <div className={`visualization-box ${statusClass} ${isRunning ? 'viz-running' : ''}`}>
+        <VizCanvas
+          vizType={vizType}
+          running={isRunning}
+          optimized={isOptimized}
+          progress={progress}
+          optLevel={optimizationLevel}
+          selectedNode={selectedNode}
+          onNodeClick={(n) => setSelectedNode(selectedNode === n ? null : n)}
+        />
+
+        {isRunning && (
+          <div className="progress-bar-wrap">
+            <div className="progress-bar-fill" style={{ width: `${progress}%` }} />
+          </div>
+        )}
+
+        <div className={`viz-overlay ${statusClass}`}>{getVizLabel()}</div>
       </div>
 
-      {/* ── Controls ── */}
+      {/* コントロールパネル */}
       <div className="control-panel">
-        <div className="control-row">
-          <label className="control-label">最適化レベル
-            <input type="range" min={0} max={100} value={optimizationLevel} onChange={e => setOptimizationLevel(+e.target.value)} className="slider" />
-            <span className="control-value">{optimizationLevel}%</span>
-          </label>
-        </div>
-        <div className="control-row">
-          <label className="control-label">データ規模
-            <input type="range" min={10} max={100} value={dataSize} onChange={e => setDataSize(+e.target.value)} className="slider" />
-            <span className="control-value">{dataSize}</span>
-          </label>
-        </div>
-        <div className="control-row">
-          <div className="toggle-group">
-            <button className={`toggle-btn${useQuantum ? ' active' : ''}`} onClick={() => setUseQuantum(true)}>Quantum</button>
-            <button className={`toggle-btn${!useQuantum ? ' active' : ''}`} onClick={() => setUseQuantum(false)}>Classical</button>
+        <div className="control-sliders">
+          <div className="control-group">
+            <label className="control-label">
+              最適化レベル
+              <span className="control-value">{optimizationLevel}%</span>
+            </label>
+            <input
+              type="range" min="10" max="100" value={optimizationLevel}
+              onChange={(e) => { setOptimizationLevel(Number(e.target.value)); setIsOptimized(false); }}
+              className="control-slider"
+              disabled={isRunning}
+            />
+          </div>
+          <div className="control-group">
+            <label className="control-label">
+              データ件数
+              <span className="control-value">{dataSize.toLocaleString()}件</span>
+            </label>
+            <input
+              type="range" min="1000" max="10000" step="500" value={dataSize}
+              onChange={(e) => { setDataSize(Number(e.target.value)); setIsOptimized(false); }}
+              className="control-slider"
+              disabled={isRunning}
+            />
           </div>
         </div>
-        <div className="control-row btn-row">
-          <button className="run-btn" onClick={handleRunSimulation} disabled={isRunning}><Play size={14} /> 実行</button>
-          <button className="reset-btn" onClick={handleReset}><RotateCcw size={14} /> リセット</button>
+
+        <div className="control-actions">
+          <div className="toggle-group">
+            <button
+              className={`toggle-btn ${useQuantum ? 'active' : ''}`}
+              onClick={() => { setUseQuantum(true); setIsOptimized(false); }}
+              disabled={isRunning}
+            >
+              量子
+            </button>
+            <button
+              className={`toggle-btn ${!useQuantum ? 'active' : ''}`}
+              onClick={() => { setUseQuantum(false); setIsOptimized(false); }}
+              disabled={isRunning}
+            >
+              古典
+            </button>
+          </div>
+
+          <button
+            className={`run-btn ${isRunning ? 'running' : ''}`}
+            onClick={handleRunSimulation}
+            disabled={isRunning}
+          >
+            <Play size={13} />
+            {isRunning ? '実行中...' : 'シミュレーション実行'}
+          </button>
+
+          <button className="reset-btn" onClick={handleReset} disabled={isRunning}>
+            <RotateCcw size={13} />
+            リセット
+          </button>
         </div>
       </div>
 
-      {/* ── Metrics ── */}
+      {/* KPIメトリクス */}
       <div className="metrics-grid">
-        {useCase.metrics.slice(0, 4).map((m, i) => (
-          <div key={i} className="metric-card">
-            <div className="metric-label">{m.label}</div>
-            <div className={`metric-value trend-${m.trend}`}>{isOptimized ? getAdjustedValue(m.value) : m.value}</div>
+        {activeUseCase.metrics.map((m, idx) => (
+          <div key={idx} className={`metric-card ${statusClass} ${isOptimized ? 'metric-optimized' : ''}`}>
+            <div>
+              <div className="metric-label">{m.label}</div>
+              <div className={`metric-value ${isOptimized ? 'metric-value-updated' : ''}`}>
+                {getAdjustedValue(m.value, m.trend)}
+              </div>
+              {isOptimized && <div className="metric-badge">最適化済</div>}
+            </div>
+            <div>{getTrendIcon(m.trend, !!(isActionMode || isOptimized))}</div>
           </div>
         ))}
       </div>
 
-      {/* ── Insights ── */}
+      {/* インサイトパネル */}
       <div className="insights-panel">
-        {/* Impact card */}
-        <div className="insight-card impact-card">
-          <div className="insight-title">BUSINESS IMPACT</div>
-          <p className="insight-body">{useCase.businessImpact}</p>
+        <div className={`insight-card impact-card ${statusClass}`}>
+          <div className="card-header">
+            <Target size={16} className="insight-icon" />
+            <span>経営インパクト (Business Impact)</span>
+          </div>
+          <div className="card-body impact-text">{activeUseCase.businessImpact}</div>
         </div>
 
-        {/* Quantum vs Classical card */}
-        <div className="insight-card qvc-card">
-          <div className="insight-title">QUANTUM vs CLASSICAL</div>
-          <div className="qvc-scales">
-            {[
-              { label: '小規模 (~1,000件)', qt: qvc.quantumTime, ct: qvc.classicalTime },
-              { label: '中規模 (1,000~10,000件)', qt: qvc.quantumTime, ct: qvc.classicalTime },
-              { label: '大規模 (10,000件超)', qt: qvc.quantumTime, ct: qvc.classicalTime },
-            ].map((s, i) => {
-              const qs = parseToSeconds(s.qt);
-              const cs = parseToSeconds(s.ct);
-              const ratio = qs && cs ? cs / qs : null;
-              let verdict = '';
-              if (i === 0) verdict = '古典有利';
-              else if (i === 1) verdict = '量子やや有利';
-              else verdict = '量子圧倒的';
+        <div className={`insight-card qvc-card ${statusClass}`}>
+          <div className="card-header">
+            <Zap size={16} className="insight-icon" />
+            <span>量子 vs 古典 ― 規模別比較</span>
+          </div>
+          <div className="card-body">
+            {(() => {
+              const cSec = parseToSeconds(activeUseCase.quantumVsClassical.classicalTime);
+              const qSec = parseToSeconds(activeUseCase.quantumVsClassical.quantumTime);
+              const scales = [
+                {
+                  label: '小規模',
+                  sublabel: '〜1,000件',
+                  cMult: 0.04,
+                  qMult: 0.18,
+                  classicalComment: '古典計算でも許容範囲内',
+                  quantumComment: '量子優位性は限定的・コスト対効果を要検討',
+                  verdict: '古典で対応可能',
+                  verdictClass: 'verdict-neutral',
+                },
+                {
+                  label: '中規模',
+                  sublabel: '1,000〜10,000件',
+                  cMult: 1.0,
+                  qMult: 1.0,
+                  classicalComment: '処理時間が長くなり業務効率への影響が顕在化',
+                  quantumComment: '量子優位性が明確に現れ始める規模',
+                  verdict: '量子優位性が顕在化',
+                  verdictClass: 'verdict-quantum',
+                },
+                {
+                  label: '大規模',
+                  sublabel: '10,000件超',
+                  cMult: 16.0,
+                  qMult: 3.5,
+                  classicalComment: '実用的な時間内での処理はほぼ不可能',
+                  quantumComment: '量子処理が事実上の必須要件',
+                  verdict: '量子処理が必須',
+                  verdictClass: 'verdict-critical',
+                },
+              ];
               return (
-                <div key={i} className="qvc-scale-block">
-                  <div className="qvc-scale-label">{s.label}</div>
-                  <div className="qvc-row"><span className="qvc-tag q">Q</span><span>{i === 0 ? fmtTime((qs || 1) * 0.9) : i === 1 ? fmtTime((qs || 1) * 0.5) : s.qt}</span></div>
-                  <div className="qvc-row"><span className="qvc-tag c">C</span><span>{i === 0 ? s.ct : i === 1 ? fmtTime((cs || 1) * 1.5) : fmtTime((cs || 1) * 5)}</span></div>
-                  <div className={`qvc-verdict ${i === 0 ? 'classical' : 'quantum'}`}>{verdict}{ratio && i === 2 ? ` (${ratio.toFixed(0)}x)` : ''}</div>
+                <div className="qvc-scales">
+                  {scales.map((s) => {
+                    const cTime = cSec != null ? fmtTime(cSec * s.cMult) : activeUseCase.quantumVsClassical.classicalTime;
+                    const qTime = qSec != null ? fmtTime(qSec * s.qMult) : activeUseCase.quantumVsClassical.quantumTime;
+                    const ratio = (cSec != null && qSec != null && qSec * s.qMult > 0)
+                      ? Math.round((cSec * s.cMult) / (qSec * s.qMult))
+                      : null;
+                    return (
+                      <div key={s.label} className="qvc-scale-block">
+                        <div className="qvc-scale-header">
+                          <span className="qvc-scale-label">{s.label}</span>
+                          <span className="qvc-scale-sublabel">{s.sublabel}</span>
+                          <span className={`qvc-verdict ${s.verdictClass}`}>{s.verdict}</span>
+                        </div>
+                        <div className="qvc-scale-rows">
+                          <div className="qvc-scale-row">
+                            <span className="qvc-scale-type classical-type">古典</span>
+                            <span className="qvc-time classical-time">{cTime}</span>
+                            <span className="qvc-scale-comment">{s.classicalComment}</span>
+                          </div>
+                          <div className="qvc-scale-row">
+                            <span className="qvc-scale-type quantum-type">量子</span>
+                            <span className="qvc-time quantum-time">{qTime}</span>
+                            <span className="qvc-scale-comment">{s.quantumComment}</span>
+                          </div>
+                          {ratio != null && ratio > 1 && (
+                            <div className="qvc-speedup">
+                              量子が <strong>{ratio.toLocaleString()}倍</strong> 高速
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div className="advantage-text" style={{ marginTop: '8px' }}>
+                    {activeUseCase.quantumVsClassical.advantage}
+                  </div>
                 </div>
               );
-            })}
+            })()}
           </div>
-          <div className="qvc-advantage">{qvc.advantage}</div>
         </div>
 
-        {/* Verification card */}
-        <div className="insight-card verify-card">
-          <div className="insight-title">VALIDATION &amp; RELIABILITY</div>
-          <p className="insight-body">{useCase.verificationSummary}</p>
+        <div className={`insight-card verify-card ${statusClass}`}>
+          <div className="card-header">
+            <ShieldCheck size={16} className="insight-icon" />
+            <span>検証・信頼性サマリー (Safety & Compliance)</span>
+          </div>
+          <div className="card-body verify-text">{activeUseCase.verificationSummary}</div>
         </div>
       </div>
     </div>

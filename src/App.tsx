@@ -48,7 +48,7 @@ function App() {
     <div className="app-wrapper">
     <div className="top-bar">
       <a
-        href="https://web-production-3d1cb.up.railway.app/expo"
+        href="https://company-dashboard.up.railway.app/expo"
         className="portal-btn"
       >
         <LayoutDashboard size={14} />
