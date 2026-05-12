@@ -1,87 +1,110 @@
 import { useState } from 'react';
-import { Plane, Code2, Cpu, LayoutDashboard } from 'lucide-react';
-import './index.css';
-import { useCases } from './data/useCases';
-import type { UseCase } from './data/useCases';
+import { Bot, Code2, Cpu, LayoutDashboard } from 'lucide-react';
 import AIChat from './components/AIChat';
 import CodeEditor from './components/CodeEditor';
 import LivePreview from './components/LivePreview';
+import { useCases } from './data/useCases';
+import type { UseCase } from './data/useCases';
+import './index.css';
 
 function App() {
-  const [activeUseCase, setActiveUseCase] = useState<UseCase | null>(null);
-  const [generatedCode, setGeneratedCode] = useState('');
+  const [activeUseCase, setActiveUseCase] = useState<UseCase>(useCases[0]);
+  const [generatedCode, setGeneratedCode] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGenerated, setIsGenerated] = useState(false);
-  const [history, setHistory] = useState<UseCase[]>([]);
-
-  const handleGenerateCommand = (useCaseId: string) => {
-    const uc = useCases.find(u => u.id === useCaseId);
-    if (!uc) return;
-    setActiveUseCase(uc);
-    setIsGenerating(true);
-    setIsGenerated(false);
-    setGeneratedCode(uc.codeSnippet);
-    setHistory(prev => [uc, ...prev.filter(h => h.id !== uc.id)].slice(0, 10));
-    setTimeout(() => {
-      setIsGenerating(false);
-      setIsGenerated(true);
-    }, 2800);
-  };
+  const [history, setHistory] = useState<{role: 'user'|'assistant', content: string}[]>([]);
 
   const handleReset = () => {
-    setActiveUseCase(null);
+    setHistory([]);
     setGeneratedCode('');
-    setIsGenerating(false);
     setIsGenerated(false);
+    setIsGenerating(false);
+  };
+
+  const handleGenerateCommand = (useCaseId: string) => {
+    const matchedUseCase = useCases.find(uc => uc.id === useCaseId) || useCases[0];
+
+    setHistory(prev => [
+      ...prev,
+      { role: 'user', content: matchedUseCase.prompt }
+    ]);
+
+    setIsGenerating(true);
+    setIsGenerated(false);
+    setGeneratedCode('');
+
+    setTimeout(() => {
+      setGeneratedCode(matchedUseCase.codeSnippet);
+      setActiveUseCase(matchedUseCase);
+      setIsGenerating(false);
+      setHistory(prev => [
+        ...prev,
+        { role: 'assistant', content: "Quantum Execution Completed: 航空量子最適化エンジンの実行に成功しました。" }
+      ]);
+    }, 2800);
   };
 
   return (
     <div className="app-wrapper">
-      {/* Top bar */}
-      <div className="top-bar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Plane size={20} />
-          <span style={{ fontWeight: 700, fontSize: 15 }}>航空・空港 Quantum Vibe Coder</span>
+    <div className="top-bar">
+      <a
+        href="https://web-production-3d1cb.up.railway.app/expo"
+        className="portal-btn"
+      >
+        <LayoutDashboard size={14} />
+        ポータルサイトへ戻る
+      </a>
+    </div>
+    <div className="app-container">
+      <div className="pane glass-panel" style={{ flex: '0 0 400px' }}>
+        <div className="pane-header">
+          <Bot size={18} color="var(--quantum-green)" />
+          <span>航空・空港 Vibe Coder</span>
         </div>
-          <LayoutDashboard size={14} /> 40業界ポータルへ
-        </a>
-      </div>
-
-      {/* 3-pane layout */}
-      <div className="app-container">
-        {/* Left pane — AI Chat */}
-        <div className="pane" style={{ width: 400 }}>
-          <div className="pane-header"><Plane size={16} /> 航空 Vibe Coder</div>
-          <div className="pane-content">
-            <AIChat onGenerate={handleGenerateCommand} onReset={handleReset} isGenerating={isGenerating} history={history} />
-          </div>
-        </div>
-
-        {/* Center pane — Code Editor */}
-        <div className="pane" style={{ flex: 1.2 }}>
-          <div className="pane-header"><Code2 size={16} /> quantum_aviation_engine.py</div>
-          <div className="pane-content">
-            <CodeEditor code={generatedCode} isGenerating={isGenerating} onAnimationComplete={() => {}} />
-          </div>
-        </div>
-
-        {/* Right pane — Live Preview */}
-        <div className="pane" style={{ width: 500 }}>
-          <div className="pane-header"><Cpu size={16} /> ライブダッシュボード (Aviation Control Center)</div>
-          <div className="pane-content">
-            {isGenerated && activeUseCase ? (
-              <LivePreview useCase={activeUseCase} />
-            ) : (
-              <div className="preview-placeholder">
-                <Cpu size={36} style={{ opacity: 0.3 }} />
-                <p style={{ opacity: 0.5, marginTop: 12, fontSize: 13 }}>
-                  {isGenerating ? 'Quantum tensors resolving…' : 'ユースケースを選択してVibe Codingを押してください'}
-                </p>
-              </div>
-            )}
-          </div>
+        <div className="pane-content">
+          <AIChat onGenerate={handleGenerateCommand} onReset={handleReset} isGenerating={isGenerating} history={history} />
         </div>
       </div>
+
+      <div className="pane glass-panel" style={{ flex: '1.2' }}>
+        <div className="pane-header">
+          <Code2 size={18} color="var(--quantum-blue)" />
+          <span>quantum_aviation_engine.py</span>
+        </div>
+        <div className="pane-content">
+          <CodeEditor
+            code={generatedCode}
+            isGenerating={isGenerating}
+            onAnimationComplete={() => setIsGenerated(true)}
+          />
+        </div>
+      </div>
+
+      <div className="pane glass-panel" style={{ flex: '0 0 500px' }}>
+        <div className="pane-header">
+          <Cpu size={18} color="#eab308" />
+          <span>ライブダッシュボード (Aviation Control Center)</span>
+        </div>
+        <div className="pane-content" style={{ padding: '16px' }}>
+          {isGenerated ? (
+            <LivePreview activeUseCase={activeUseCase} />
+          ) : (
+            <div style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              justifyContent: 'center', height: '100%', gap: '16px',
+              opacity: 0.45
+            }}>
+              <Cpu size={48} color="#eab308" style={{ animation: isGenerating ? 'pulse 1.2s infinite' : 'none' }} />
+              <p style={{ fontSize: '0.85rem', textAlign: 'center', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                {isGenerating
+                  ? 'Quantum tensors resolving…\nダッシュボードを構築中'
+                  : 'ユースケースを選択して\n「Vibe Coding」を押してください'}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
     </div>
   );
 }

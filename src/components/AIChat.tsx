@@ -7,10 +7,10 @@ interface Props {
   onGenerate: (useCaseId: string) => void;
   onReset: () => void;
   isGenerating: boolean;
-  history: UseCase[];
+  history: {role: 'user'|'assistant', content: string}[];
 }
 
-const AIChat: React.FC<Props> = ({ onGenerate, onReset, isGenerating, history: _history }) => {
+const AIChat: React.FC<Props> = ({ onGenerate, onReset, isGenerating }) => {
   const [prompt, setPrompt] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 

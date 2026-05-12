@@ -24,9 +24,9 @@ function fmtTime(sec: number): string {
   return `${(sec / 86400).toFixed(1)} 日`;
 }
 
-interface Props { useCase: UseCase; }
+interface Props { activeUseCase: UseCase; }
 
-const LivePreview: React.FC<Props> = ({ useCase }) => {
+const LivePreview: React.FC<Props> = ({ activeUseCase: useCase }) => {
   const [optimizationLevel, setOptimizationLevel] = useState(75);
   const [dataSize, setDataSize] = useState(50);
   const [isRunning, setIsRunning] = useState(false);
