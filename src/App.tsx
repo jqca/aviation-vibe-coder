@@ -41,6 +41,7 @@ function App() {
         ...prev,
         { role: 'assistant', content: "Quantum Execution Completed: 航空量子最適化エンジンの実行に成功しました。" }
       ]);
+      // isGenerated は CodeEditor のアニメーション完了後に onAnimationComplete で true にする
     }, 2800);
   };
 
