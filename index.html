@@ -9,5 +9,54 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+  <script>
+/* JQCA Quantum Vibe Coder - IP Guard v2 */
+(function () {
+  function addFooter() {
+    if (document.getElementById("jqca-ip-footer")) return;
+    var f = document.createElement("div");
+    f.id = "jqca-ip-footer";
+    f.style.cssText =
+      "position:fixed;bottom:4px;right:10px;font-size:10px;color:rgba(255,255,255,0.45);z-index:9999;" +
+      "background:rgba(0,0,0,0.35);padding:3px 8px;border-radius:4px;pointer-events:auto;" +
+      "font-family:-apple-system,'Segoe UI','Hiragino Sans',sans-serif;";
+    f.innerHTML =
+      '&#9888; デモ用簡略サンプル実装 | 公知アルゴリズムの教育デモ | ' +
+      '<a href="/terms.html" target="_blank" rel="noopener" style="color:rgba(255,255,255,0.7);text-decoration:underline;">利用規約</a> | ' +
+      '&copy; 2026 JQCA';
+    document.body.appendChild(f);
+  }
+
+  function addBlurStyle() {
+    if (document.getElementById("jqca-blur-style")) return;
+    var style = document.createElement("style");
+    style.id = "jqca-blur-style";
+    style.textContent =
+      ".app-container > .pane:nth-child(2) > *:not(.pane-header) {" +
+      "  filter: blur(4px) !important;" +
+      "  -webkit-filter: blur(4px) !important;" +
+      "  user-select: none !important;" +
+      "  -webkit-user-select: none !important;" +
+      "  pointer-events: none !important;" +
+      "}" +
+      ".app-container > .pane:nth-child(2) * {" +
+      "  -webkit-touch-callout: none !important;" +
+      "}";
+    document.head.appendChild(style);
+  }
+
+  function init() {
+    addFooter();
+    addBlurStyle();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
+</script>
+
   </body>
 </html>
